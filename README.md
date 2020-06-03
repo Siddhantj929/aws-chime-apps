@@ -27,6 +27,6 @@ The script deploys the meeting demo application and provides an API endpoint URL
 
 You will see the crux of this application inside `demos/serverless/src/handler.js` which handles all the requests.
 
-## Another big component of the application is inside `demos/browser/app/meetingV2/meetingV2.ts` which uses the pre-built Chime components and import them from the base `/build/` folder.
+Another big component of the application is inside `demos/browser/app/meetingV2/meetingV2.ts` which uses the pre-built Chime components and import them from the base `/build/` folder.
 
 **Note:** Please do not edit the code in the base `/src/` folder. This code has been implemented after extensive testing and is important for the basic functionality setup. Any changes in the application should start from `demos/serverless/src/handler.js`.
