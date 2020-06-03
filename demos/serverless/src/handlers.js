@@ -1,6 +1,3 @@
-// Copyright 2019-2020 Amazon.com, Inc. or its affiliates. All Rights Reserved.
-// SPDX-License-Identifier: Apache-2.0
-
 const AWS = require('./aws-sdk');
 const fs = require('fs');
 const uuid = require('./uuid/v4');
@@ -26,18 +23,22 @@ const useSqsInsteadOfEventBridge = process.env.USE_EVENT_BRIDGE === 'false';
 
 exports.index = async (event, context, callback) => {
   // Return the contents of the index page
-  return response(200, 'text/html', fs.readFileSync('./index.html', {encoding: 'utf8'}));
+  return response(200, 'text/html', fs.readFileSync('./index.html', { encoding: 'utf8' }));
 };
 
 exports.indexV2 = async (event, context, callback) => {
   // Return the contents of the index V2 page
-  return response(200, 'text/html', fs.readFileSync('./indexV2.html', {encoding: 'utf8'}));
+  return response(200, 'text/html', fs.readFileSync('./indexV2.html', { encoding: 'utf8' }));
 };
 
-exports.join = async(event, context) => {
+exports.join = async (event, context) => {
   const query = event.queryStringParameters;
   if (!query.title || !query.name || !query.region) {
-    return response(400, 'application/json', JSON.stringify({error: 'Need parameters: title, name, region'}));
+    return response(
+      400,
+      'application/json',
+      JSON.stringify({ error: 'Need parameters: title, name, region' })
+    );
   }
 
   // Look up the meeting by its title. If it does not exist, create the meeting.
@@ -68,25 +69,35 @@ exports.join = async(event, context) => {
 
   // Create new attendee for the meeting
   console.info('Adding new attendee');
-  const attendee = (await chime.createAttendee({
-    // The meeting ID of the created meeting to add the attendee to
-    MeetingId: meeting.Meeting.MeetingId,
+  const attendee = await chime
+    .createAttendee({
+      // The meeting ID of the created meeting to add the attendee to
+      MeetingId: meeting.Meeting.MeetingId,
 
-    // Any user ID you wish to associate with the attendeee.
-    // For simplicity here, we use a random UUID for uniqueness
-    // combined with the name the user provided, which can later
-    // be used to help build the roster.
-    ExternalUserId: `${uuid().substring(0, 8)}#${query.name}`.substring(0, 64),
-  }).promise());
+      // Any user ID you wish to associate with the attendeee.
+      // For simplicity here, we use a random UUID for uniqueness
+      // combined with the name the user provided, which can later
+      // be used to help build the roster.
+      ExternalUserId: `${uuid().substring(0, 8)}#${query.name}`.substring(0, 64),
+    })
+    .promise();
 
   // Return the meeting and attendee responses. The client will use these
   // to join the meeting.
-  return response(200, 'application/json', JSON.stringify({
-    JoinInfo: {
-      Meeting: meeting,
-      Attendee: attendee,
-    },
-  }, null, 2));
+  return response(
+    200,
+    'application/json',
+    JSON.stringify(
+      {
+        JoinInfo: {
+          Meeting: meeting,
+          Attendee: attendee,
+        },
+      },
+      null,
+      2
+    )
+  );
 };
 
 exports.end = async (event, context) => {
@@ -101,7 +112,11 @@ exports.end = async (event, context) => {
 exports.logs = async (event, context) => {
   const body = JSON.parse(event.body);
   if (!body.logs || !body.meetingId || !body.attendeeId || !body.appName) {
-    return response(400, 'application/json', JSON.stringify({error: 'Need properties: logs, meetingId, attendeeId, appName'}));
+    return response(
+      400,
+      'application/json',
+      JSON.stringify({ error: 'Need properties: logs, meetingId, attendeeId, appName' })
+    );
   } else if (!body.logs.length) {
     return response(200, 'application/json', JSON.stringify({}));
   }
@@ -110,7 +125,7 @@ exports.logs = async (event, context) => {
   const cloudWatchClient = new AWS.CloudWatchLogs({ apiVersion: '2014-03-28' });
   const putLogEventsInput = {
     logGroupName: logGroupName,
-    logStreamName: logStreamName
+    logStreamName: logStreamName,
   };
   const uploadSequence = await ensureLogStream(cloudWatchClient, logStreamName);
   if (uploadSequence) {
@@ -120,10 +135,12 @@ exports.logs = async (event, context) => {
   for (let i = 0; i < body.logs.length; i++) {
     const log = body.logs[i];
     const timestamp = new Date(log.timestampMs).toISOString();
-    const message = `${timestamp} [${log.sequenceNumber}] [${log.logLevel}] [meeting: ${body.meetingId.toString()}] [attendee: ${body.attendeeId}]: ${log.message}`;
+    const message = `${timestamp} [${log.sequenceNumber}] [${
+      log.logLevel
+    }] [meeting: ${body.meetingId.toString()}] [attendee: ${body.attendeeId}]: ${log.message}`;
     logEvents.push({
       message: message,
-      timestamp: log.timestampMs
+      timestamp: log.timestampMs,
     });
   }
   putLogEventsInput.logEvents = logEvents;
@@ -135,57 +152,65 @@ exports.logs = async (event, context) => {
 exports.sqs_handler = async (event, context, callback) => {
   console.log(event.Records);
   return {};
-}
+};
 
 // Called when EventBridge receives a meeting event and logs out the event
 exports.event_bridge_handler = async (event, context, callback) => {
   console.log(event);
   return {};
-}
+};
 
 // === Helpers ===
 
 // Retrieves the meeting from the table by the meeting title
 async function getMeeting(title) {
-  const result = await ddb.getItem({
-    TableName: meetingsTableName,
-    Key: {
-      'Title': {
-        S: title
+  const result = await ddb
+    .getItem({
+      TableName: meetingsTableName,
+      Key: {
+        Title: {
+          S: title,
+        },
       },
-    },
-  }).promise();
+    })
+    .promise();
   return result.Item ? JSON.parse(result.Item.Data.S) : null;
 }
 
 // Stores the meeting in the table using the meeting title as the key
 async function putMeeting(title, meeting) {
-  await ddb.putItem({
-    TableName: meetingsTableName,
-    Item: {
-      'Title': { S: title },
-      'Data': { S: JSON.stringify(meeting) },
-      'TTL': {
-        N: `${Math.floor(Date.now() / 1000) + 60 * 60 * 24}` // clean up meeting record one day from now
-      }
-    }
-  }).promise();
+  await ddb
+    .putItem({
+      TableName: meetingsTableName,
+      Item: {
+        Title: { S: title },
+        Data: { S: JSON.stringify(meeting) },
+        TTL: {
+          N: `${Math.floor(Date.now() / 1000) + 60 * 60 * 24}`, // clean up meeting record one day from now
+        },
+      },
+    })
+    .promise();
 }
 
 // Creates log stream if necessary and returns the current sequence token
 async function ensureLogStream(cloudWatchClient, logStreamName) {
-  const logStreamsResult = await cloudWatchClient.describeLogStreams({
-    logGroupName: logGroupName,
-    logStreamNamePrefix: logStreamName,
-  }).promise();
+  const logStreamsResult = await cloudWatchClient
+    .describeLogStreams({
+      logGroupName: logGroupName,
+      logStreamNamePrefix: logStreamName,
+    })
+    .promise();
   const foundStream = logStreamsResult.logStreams.find(s => s.logStreamName === logStreamName);
   if (foundStream) {
     return foundStream.uploadSequenceToken;
   }
-  await cloudWatchClient.createLogStream({
-    logGroupName: logGroupName,
-    logStreamName: logStreamName,
-  }).promise();
+  await cloudWatchClient
+    .createLogStream({
+      logGroupName: logGroupName,
+      logStreamName: logStreamName,
+    })
+    .promise();
   return null;
 }
 
@@ -194,6 +219,6 @@ function response(statusCode, contentType, body) {
     statusCode: statusCode,
     headers: { 'Content-Type': contentType },
     body: body,
-    isBase64Encoded: false
+    isBase64Encoded: false,
   };
 }
